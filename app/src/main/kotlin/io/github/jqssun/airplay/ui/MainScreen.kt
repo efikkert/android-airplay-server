@@ -91,6 +91,8 @@ private enum class Tab(val labelRes: Int, val icon: ImageVector) {
 fun MainScreen(
     viewModel: MainViewModel,
     isInPip: Boolean = false,
+    // opened only to show a sender; the app's own ui stays hidden
+    handoff: Boolean = false,
     onSurfaceAvailable: (android.view.Surface) -> Unit,
     onSurfaceDestroyed: (android.view.Surface) -> Unit,
     onPip: () -> Unit = {},
@@ -130,6 +132,17 @@ fun MainScreen(
     LaunchedEffect(connections) {
         if (connections == 0) fullscreen = false
     }
+
+    // black until mirroring renders and black again until the screen is handed back;
+    // mirroring flips to audio mode as it stops, so remember it ran
+    var handoffMirrored by remember { mutableStateOf(false) }
+    LaunchedEffect(handoff, mirroringActive) {
+        if (!handoff) handoffMirrored = false
+        else if (mirroringActive) handoffMirrored = true
+    }
+    // music-only sessions keep the now-playing screen
+    val cover = handoff && pin == null && (handoffMirrored || !audioOnly)
+    val noVideo: @Composable () -> Unit = {}
 
     // leaving video playback must not fall through to a stale mirroring fullscreen
     LaunchedEffect(videoPlaybackActive) {
@@ -507,11 +520,13 @@ fun MainScreen(
         if (pin != null) fullscreen = false
     }
 
-    if (fullscreen) {
-        BackHandler { fullscreen = false }
+    if (fullscreen || cover) {
+        if (fullscreen) BackHandler { fullscreen = false }
         FullscreenVideo(
             viewModel = viewModel,
-            video = video,
+            // drop the surface once the session is over so the last frame doesn't linger
+            video = if (cover && connections == 0) noVideo else video,
+            chromeless = cover,
             onExitFullscreen = { fullscreen = false },
             onPip = onPip
         )
@@ -774,6 +789,7 @@ private fun OverviewContent(
 private fun FullscreenVideo(
     viewModel: MainViewModel,
     video: @Composable () -> Unit,
+    chromeless: Boolean = false,
     onExitFullscreen: () -> Unit,
     onPip: () -> Unit
 ) {
@@ -781,9 +797,11 @@ private fun FullscreenVideo(
     val debugEnabled by viewModel.pref(Prefs.DEBUG_ENABLED).collectAsState()
     val debugInfo by viewModel.debugInfo.collectAsState()
 
-    var controlsVisible by remember { mutableStateOf(true) }
+    // chromeless: controls only once tapped
+    var controlsVisible by remember { mutableStateOf(!chromeless) }
     var tapTick by remember { mutableStateOf(0) }
     LaunchedEffect(tapTick) {
+        if (chromeless && tapTick == 0) return@LaunchedEffect
         controlsVisible = true
         delay(8000)
         controlsVisible = false
@@ -821,7 +839,7 @@ private fun FullscreenVideo(
         }
         var showRes by remember { mutableStateOf(false) }
         LaunchedEffect(videoResolution) {
-            if (videoResolution.isNotEmpty()) {
+            if (videoResolution.isNotEmpty() && !chromeless) {
                 showRes = true
                 delay(5000)
                 showRes = false

@@ -1,5 +1,6 @@
 package io.github.jqssun.airplay.service
 
+import android.app.ActivityOptions
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -1163,8 +1164,10 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                 // a screen the user already had open stays theirs
                 .putExtra(MainActivity.EXTRA_AUTO_LAUNCHED, !MainActivity.visible)
+            // cut straight to the sender instead of animating over the current screen
+            val noAnimation = ActivityOptions.makeCustomAnimation(this, 0, 0).toBundle()
             try {
-                startActivity(launchIntent)
+                startActivity(launchIntent, noAnimation)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to launch activity", e)
             }

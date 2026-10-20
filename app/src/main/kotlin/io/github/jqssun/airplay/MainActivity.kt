@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
     private val logCallback: (String) -> Unit = { viewModel.addLog(it) }
     private val pinCallback: (String?) -> Unit = { viewModel.showPin(it) }
     // opened by the service for a connection, so handed back to the previous app when it ends
-    private var autoLaunched = false
+    private val handoff = mutableStateOf(false)
     private var returnJob: Job? = null
 
     private val connection = object : ServiceConnection {
@@ -133,6 +133,7 @@ class MainActivity : ComponentActivity() {
                 MainScreen(
                     viewModel = viewModel,
                     isInPip = isInPip.value,
+                    handoff = handoff.value,
                     onSurfaceAvailable = { viewModel.onSurfaceAvailable(it) },
                     onSurfaceDestroyed = { viewModel.onSurfaceDestroyed(it) },
                     onPip = { enterPip() },
@@ -152,7 +153,7 @@ class MainActivity : ComponentActivity() {
         if (intent == null || !intent.getBooleanExtra(EXTRA_AUTO_LAUNCHED, false)) return
         // consumed once so a recreate does not re-arm it
         intent.removeExtra(EXTRA_AUTO_LAUNCHED)
-        autoLaunched = true
+        handoff.value = true
         if (viewModel.pref(Prefs.WAKE_ON_CONNECT).value) _turnScreenOn(true)
     }
 
@@ -169,16 +170,22 @@ class MainActivity : ComponentActivity() {
 
     private fun _scheduleReturn() {
         returnJob?.cancel()
-        if (!autoLaunched || !viewModel.pref(Prefs.RETURN_ON_DISCONNECT).value) return
+        if (!handoff.value) return
         // backgrounding stops a server that does not run in background
-        if (!viewModel.pref(Prefs.RUN_IN_BACKGROUND).value) return
+        if (!viewModel.pref(Prefs.RETURN_ON_DISCONNECT).value || !viewModel.pref(Prefs.RUN_IN_BACKGROUND).value) {
+            // staying put: show the app instead of the black stand-in
+            handoff.value = false
+            return
+        }
         returnJob = lifecycleScope.launch {
             // senders drop and reconnect when switching between mirroring and video
             delay(RETURN_DELAY_MS)
             if (viewModel.connectionCount.value == 0) {
-                autoLaunched = false
                 _turnScreenOn(false)
+                // handoff clears in onStop; clearing it here would flash the app's ui first
                 moveTaskToBack(true)
+                @Suppress("DEPRECATION")
+                overridePendingTransition(0, 0)
             }
         }
     }
@@ -264,7 +271,7 @@ class MainActivity : ComponentActivity() {
         visible = false
         // leaving on their own takes the handback away
         if (!isChangingConfigurations) {
-            autoLaunched = false
+            handoff.value = false
             returnJob?.cancel()
         }
         // never stop mid-session
