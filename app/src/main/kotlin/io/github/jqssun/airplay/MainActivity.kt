@@ -252,8 +252,10 @@ class MainActivity : ComponentActivity() {
         return builder.build()
     }
 
+    // a handoff stands in for the whole screen; shrinking it into pip never helps
     private fun _shouldAutoPip(): Boolean =
-        viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
+        !handoff.value &&
+            viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
             viewModel.connectionCount.value > 0
 
     override fun onUserLeaveHint() {
@@ -271,6 +273,8 @@ class MainActivity : ComponentActivity() {
         visible = false
         // leaving on their own takes the handback away
         if (!isChangingConfigurations) {
+            // unless hdmi-cec switched inputs while the display was waking; take the screen back
+            if (handoff.value && !isFinishing) service?.reclaimScreenAfterWake()
             handoff.value = false
             returnJob?.cancel()
         }
