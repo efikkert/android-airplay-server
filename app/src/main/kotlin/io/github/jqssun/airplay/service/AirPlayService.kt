@@ -85,6 +85,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private var usbAdvertiser: UsbMdnsAdvertiser? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    @Volatile private var _wokeDisplayAt = 0L
     private var foregroundStarted = false
     private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
 
@@ -815,10 +816,21 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (pm.isInteractive) return
         log("Waking display")
+        _wokeDisplayAt = SystemClock.elapsedRealtime()
         pm.newWakeLock(
             PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
             "airplay:wake"
         ).acquire(WAKE_DISPLAY_MS)
+    }
+
+    // a waking tv asks hdmi-cec for the active source, and a console or set-top box can answer
+    // seconds later by switching inputs over the sender; win the screen back once
+    fun reclaimScreenAfterWake(): Boolean {
+        if (_connectionCount.value == 0 || SystemClock.elapsedRealtime() - _wokeDisplayAt > RECLAIM_WINDOW_MS) return false
+        _wokeDisplayAt = 0L
+        log("Reclaiming screen after wake")
+        launchMainActivity()
+        return true
     }
 
     // wifi power save on the receiver adds jitter to every frame and audio packet
@@ -1227,6 +1239,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private const val CHANNEL_ID = "airplay_service"
         private const val NOTIFICATION_ID = 1
         private const val WAKE_DISPLAY_MS = 10_000L
+        // the xbox on a hisense u7g took 4.75 s to claim active source after wake
+        private const val RECLAIM_WINDOW_MS = 15_000L
         const val ACTION_PLAY_PAUSE = "io.github.jqssun.airplay.PLAY_PAUSE"
         const val ACTION_NEXT = "io.github.jqssun.airplay.NEXT"
         const val ACTION_PREV = "io.github.jqssun.airplay.PREV"
