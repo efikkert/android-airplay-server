@@ -36,15 +36,13 @@ jobs:
           echo ${{ secrets.STORE }} | base64 -d > upload.jks
           echo ${{ secrets.LOCAL }} | base64 -d > local.properties
           chmod +x ./gradlew;
-          ./gradlew assembleRelease bundleRelease --stacktrace
+          ./gradlew assembleRelease --stacktrace
           rm upload.jks local.properties
 
-      - name: Publish (GitHub)
-        uses: softprops/action-gh-release@v3
+      # fork: an artifact needs no write token, unlike a release
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: v${{ env.version }}
-          tag_name: v${{ env.version }}
-          files: |
-            ${{ env.main_project_module }}/build/outputs/apk/release/app-release.apk
-            ${{ env.main_project_module }}/build/outputs/bundle/release/app-release.aab
+          name: airplay-${{ env.version }}
+          path: ${{ env.main_project_module }}/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
