@@ -82,6 +82,7 @@ object Prefs {
     val KEY_ALLOW_FRAME_DROP = bool(MediaFormat.KEY_ALLOW_FRAME_DROP, true, restart = true)
     val KEY_PRIORITY = bool(MediaFormat.KEY_PRIORITY, true, restart = true)
     val LOW_LATENCY = bool("low_latency", false)
+    val LOW_LATENCY_WIFI = bool("low_latency_wifi", true)
     val OPERATING_RATE = tri("operating_rate", restart = true)
     val SCHEDULED_OUTPUT_BUFFER_RELEASE = bool("scheduled_output_buffer_release", false, restart = true)
     val AUDIO_AUTO_BUFFER = bool("audio_auto_buffer", true)

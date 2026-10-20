@@ -70,6 +70,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val keyAllowFrameDrop by viewModel.pref(Prefs.KEY_ALLOW_FRAME_DROP).collectAsState()
     val realtimeDecoderPriority by viewModel.pref(Prefs.KEY_PRIORITY).collectAsState()
     val lowLatency by viewModel.pref(Prefs.LOW_LATENCY).collectAsState()
+    val lowLatencyWifi by viewModel.pref(Prefs.LOW_LATENCY_WIFI).collectAsState()
     val operatingRate by viewModel.pref(Prefs.OPERATING_RATE).collectAsState()
     val scheduledOutputBufferRelease by viewModel.pref(Prefs.SCHEDULED_OUTPUT_BUFFER_RELEASE).collectAsState()
     val benchmarkLog by viewModel.pref(Prefs.BENCHMARK_LOG).collectAsState()
@@ -358,6 +359,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 description = stringResource(R.string.setting_low_latency_desc),
                 checked = lowLatency,
                 onCheckedChange = { viewModel.set(Prefs.LOW_LATENCY, it) }
+            )
+
+            SettingSwitch(
+                title = stringResource(R.string.setting_low_latency_wifi),
+                description = stringResource(R.string.setting_low_latency_wifi_desc),
+                checked = lowLatencyWifi,
+                onCheckedChange = { viewModel.set(Prefs.LOW_LATENCY_WIFI, it) }
             )
 
             SettingSwitch(

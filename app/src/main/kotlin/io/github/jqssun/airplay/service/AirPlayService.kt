@@ -13,6 +13,7 @@ import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.media.AudioManager
+import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
@@ -82,6 +83,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
     private var nsdManager: NsdServiceManager? = null
     private var usbAdvertiser: UsbMdnsAdvertiser? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     private var foregroundStarted = false
     private var lastOrientation = Configuration.ORIENTATION_UNDEFINED
 
@@ -510,6 +512,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         nsdManager = null
         wakeLock?.release()
         wakeLock = null
+        _holdWifi(false)
         _serverState.value = ServerState.ERROR
         if (foregroundStarted) {
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -545,6 +548,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         nsdManager = null
         wakeLock?.release()
         wakeLock = null
+        _holdWifi(false)
         videoRenderer.release()
         airPlayVideoPlayer.stop()
         mediaSession?.isActive = false
@@ -797,6 +801,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         val firstConnection = _connectionCount.value == 0
         _connectionCount.value++
         log("Sender connected (${_connectionCount.value})")
+        if (firstConnection && prefs[Prefs.LOW_LATENCY_WIFI]) _holdWifi(true)
         if (firstConnection && shouldLaunchOnConnect()) {
             if (prefs[Prefs.WAKE_ON_CONNECT]) _wakeDisplay()
             launchMainActivity()
@@ -815,9 +820,27 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         ).acquire(WAKE_DISPLAY_MS)
     }
 
+    // wifi power save on the receiver adds jitter to every frame and audio packet
+    @Synchronized
+    private fun _holdWifi(hold: Boolean) {
+        if (!hold) {
+            wifiLock?.takeIf { it.isHeld }?.release()
+            wifiLock = null
+            return
+        }
+        if (wifiLock?.isHeld == true) return
+        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        @Suppress("DEPRECATION")
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            else WifiManager.WIFI_MODE_FULL_HIGH_PERF
+        wifiLock = wm.createWifiLock(mode, "airplay:stream").apply { setReferenceCounted(false); acquire() }
+        log("Holding low-latency Wi-Fi")
+    }
+
     override fun onConnectionDestroy() {
         _connectionCount.value = (_connectionCount.value - 1).coerceAtLeast(0)
         if (_connectionCount.value == 0) {
+            _holdWifi(false)
             // clients may drop without POST /stop; must run before the poll-state reset
             _endVideoPlayback("AirPlay Video stopped (disconnect)")
             // last client gone: release audio output devices to save power

@@ -168,6 +168,8 @@
     <string name="chip_off">Off</string>
     <string name="setting_low_latency">Low latency</string>
     <string name="setting_low_latency_desc">Use low-latency audio decoding for output; this uses more power and CPU</string>
+    <string name="setting_low_latency_wifi">Low-latency Wi-Fi</string>
+    <string name="setting_low_latency_wifi_desc">Keep Wi-Fi out of power save while a sender is connected; reduces stutter and delay</string>
     <string name="setting_scheduled_output_buffer_release">Aligned frame pacing</string>
     <string name="setting_scheduled_output_buffer_release_desc">Schedule each decoded frame to the VSYNC matching its presentation timestamp</string>
     <string name="setting_audio_delay">Override audio delay</string>
