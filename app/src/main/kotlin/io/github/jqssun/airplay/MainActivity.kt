@@ -28,6 +28,7 @@ import io.github.jqssun.airplay.ui.theme.AirPlayTheme
 import io.github.jqssun.airplay.viewmodel.LocalNetworkAccess
 import io.github.jqssun.airplay.viewmodel.MainViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -40,6 +41,9 @@ class MainActivity : ComponentActivity() {
     val isInPip = mutableStateOf(false)
     private val logCallback: (String) -> Unit = { viewModel.addLog(it) }
     private val pinCallback: (String?) -> Unit = { viewModel.showPin(it) }
+    // opened by the service for a connection, so handed back to the previous app when it ends
+    private var autoLaunched = false
+    private var returnJob: Job? = null
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -64,6 +68,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        _handleLaunchIntent(intent)
 
         val missing = buildList {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !_granted(Manifest.permission.POST_NOTIFICATIONS)) {
@@ -95,6 +100,21 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                var hadConnection = false
+                viewModel.connectionCount.collect { conns ->
+                    if (conns > 0) {
+                        hadConnection = true
+                        returnJob?.cancel()
+                    } else if (hadConnection) {
+                        hadConnection = false
+                        _scheduleReturn()
+                    }
+                }
+            }
+        }
+
         // auto-enter pre-declared in pip params
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             lifecycleScope.launch {
@@ -118,6 +138,47 @@ class MainActivity : ComponentActivity() {
                     onPip = { enterPip() },
                     onLocalNetwork = ::_requestLocalNetwork
                 )
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        _handleLaunchIntent(intent)
+    }
+
+    private fun _handleLaunchIntent(intent: Intent?) {
+        if (intent == null || !intent.getBooleanExtra(EXTRA_AUTO_LAUNCHED, false)) return
+        // consumed once so a recreate does not re-arm it
+        intent.removeExtra(EXTRA_AUTO_LAUNCHED)
+        autoLaunched = true
+        if (viewModel.pref(Prefs.WAKE_ON_CONNECT).value) _turnScreenOn(true)
+    }
+
+    private fun _turnScreenOn(on: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(on)
+            setTurnScreenOn(on)
+        } else {
+            @Suppress("DEPRECATION")
+            val flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            if (on) window.addFlags(flags) else window.clearFlags(flags)
+        }
+    }
+
+    private fun _scheduleReturn() {
+        returnJob?.cancel()
+        if (!autoLaunched || !viewModel.pref(Prefs.RETURN_ON_DISCONNECT).value) return
+        // backgrounding stops a server that does not run in background
+        if (!viewModel.pref(Prefs.RUN_IN_BACKGROUND).value) return
+        returnJob = lifecycleScope.launch {
+            // senders drop and reconnect when switching between mirroring and video
+            delay(RETURN_DELAY_MS)
+            if (viewModel.connectionCount.value == 0) {
+                autoLaunched = false
+                _turnScreenOn(false)
+                moveTaskToBack(true)
             }
         }
     }
@@ -163,6 +224,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        visible = true
         _syncLocalNetwork()
         _refreshForeground()
     }
@@ -199,6 +261,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        visible = false
+        // leaving on their own takes the handback away
+        if (!isChangingConfigurations) {
+            autoLaunched = false
+            returnJob?.cancel()
+        }
         // never stop mid-session
         if (!viewModel.pref(Prefs.RUN_IN_BACKGROUND).value && !isChangingConfigurations &&
             viewModel.serverState.value == AirPlayService.ServerState.RUNNING &&
@@ -214,5 +282,14 @@ class MainActivity : ComponentActivity() {
         }
         unbindService(connection)
         super.onDestroy()
+    }
+
+    companion object {
+        const val EXTRA_AUTO_LAUNCHED = "io.github.jqssun.airplay.AUTO_LAUNCHED"
+        private const val RETURN_DELAY_MS = 1500L
+
+        @Volatile
+        var visible = false
+            private set
     }
 }

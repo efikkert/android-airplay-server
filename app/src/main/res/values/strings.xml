@@ -119,6 +119,10 @@
     <string name="setting_launch_on_connect">Open this application on connect</string>
     <string name="setting_launch_on_connect_desc">Show the screen when a sender connects</string>
     <string name="setting_launch_on_connect_no_permission">Tap to grant Display over other apps permission</string>
+    <string name="setting_wake_on_connect">Wake display on connect</string>
+    <string name="setting_wake_on_connect_desc">Turn the screen on when a sender connects while it is off</string>
+    <string name="setting_return_on_disconnect">Return to previous app on disconnect</string>
+    <string name="setting_return_on_disconnect_desc">Go back to what was on screen when the last sender disconnects; requires Run in background</string>
     <string name="setting_discovery">Discoverable over</string>
     <string name="setting_discovery_all_desc">Advertise on all usable interfaces. Uses NsdManager.</string>
     <string name="setting_discovery_usb_desc">Only advertise over USB tethering to enforce wired connection. Uses custom mDNS responder.</string>

@@ -797,7 +797,22 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         val firstConnection = _connectionCount.value == 0
         _connectionCount.value++
         log("Sender connected (${_connectionCount.value})")
-        if (firstConnection && shouldLaunchOnConnect()) launchMainActivity()
+        if (firstConnection && shouldLaunchOnConnect()) {
+            if (prefs[Prefs.WAKE_ON_CONNECT]) _wakeDisplay()
+            launchMainActivity()
+        }
+    }
+
+    // the server stays reachable while a tv is in standby, so a sender can connect to a dark screen
+    @Suppress("DEPRECATION")
+    private fun _wakeDisplay() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (pm.isInteractive) return
+        log("Waking display")
+        pm.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+            "airplay:wake"
+        ).acquire(WAKE_DISPLAY_MS)
     }
 
     override fun onConnectionDestroy() {
@@ -1146,6 +1161,8 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         Handler(Looper.getMainLooper()).post {
             val launchIntent = Intent(this, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                // a screen the user already had open stays theirs
+                .putExtra(MainActivity.EXTRA_AUTO_LAUNCHED, !MainActivity.visible)
             try {
                 startActivity(launchIntent)
             } catch (e: Exception) {
@@ -1183,6 +1200,7 @@ class AirPlayService : LifecycleService(), RaopCallbackHandler, LogListener {
         private const val CLIENT_VOL_TIMEOUT_MS = 800L
         private const val CHANNEL_ID = "airplay_service"
         private const val NOTIFICATION_ID = 1
+        private const val WAKE_DISPLAY_MS = 10_000L
         const val ACTION_PLAY_PAUSE = "io.github.jqssun.airplay.PLAY_PAUSE"
         const val ACTION_NEXT = "io.github.jqssun.airplay.NEXT"
         const val ACTION_PREV = "io.github.jqssun.airplay.PREV"
